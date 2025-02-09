@@ -1,12 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquarePlus, Send, AlertTriangle, MoreVertical, Trash2, Edit2 } from 'lucide-react';
+import {
+  MessageSquarePlus,
+  Send,
+  AlertTriangle,
+  MoreVertical,
+  Trash2,
+  Edit2,
+  LogOut,
+} from 'lucide-react';
 import { initializeGemini } from './lib/gemini';
 import { Chat, Message } from './types';
 import { ChatMessage } from './components/ChatMessage';
-import { loadChats, saveChat, deleteChat } from './lib/storage';
+import { loadChats, saveChat, deleteChat, createUser, authenticateUser } from './lib/storage';
 import { Modal } from './components/Modal';
+import { LoginForm } from './components/auth/LoginForm';
+import { SignupForm } from './components/auth/SignupForm';
+import { useAuth } from './contexts/AuthContext';
+import { LoginCredentials, SignupData } from './types/auth';
 
 function App() {
+  // Auth states
+  const { user, setUser, isLoading: isAuthLoading } = useAuth();
+  const [isLoginView, setIsLoginView] = useState(true);
+
+  // Chat states
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -20,13 +37,57 @@ function App() {
 
   const currentChat = chats.find((chat) => chat.id === currentChatId);
 
+  // Load user's chats
   useEffect(() => {
-    loadChats().then(setChats).catch(console.error);
-  }, []);
+    if (user) {
+      loadChats()
+        .then((loadedChats) => {
+          // Only show chats belonging to the current user
+          setChats(loadedChats.filter((chat) => chat.userId === user.id));
+        })
+        .catch(console.error);
+    } else {
+      setChats([]);
+      setCurrentChatId(null);
+    }
+  }, [user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentChat?.messages]);
+
+  const handleLogin = async (credentials: LoginCredentials) => {
+    try {
+      const authenticatedUser = await authenticateUser(credentials);
+      setUser(authenticatedUser);
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Failed to login');
+    }
+  };
+
+  const handleSignup = async (data: SignupData) => {
+    try {
+      const newUser = await createUser({
+        name: data.name,
+        email: data.email,
+        password: data.password, // In a real app, this would be hashed
+        age: data.age,
+        jobTitle: data.jobTitle,
+      });
+      
+      // Remove password from user object before setting in state
+      const { password, ...userWithoutPassword } = newUser;
+      setUser(userWithoutPassword);
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Failed to sign up');
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setChats([]);
+    setCurrentChatId(null);
+  };
 
   const createNewChat = () => {
     setNewChatTitle('');
@@ -34,12 +95,15 @@ function App() {
   };
 
   const handleCreateChat = () => {
+    if (!user) return;
+    
     const title = newChatTitle.trim() || 'New Chat';
     const newChat: Chat = {
       id: crypto.randomUUID(),
       title,
       messages: [],
       timestamp: Date.now(),
+      userId: user.id,
     };
     setChats((prev) => [newChat, ...prev]);
     saveChat(newChat).catch(console.error);
@@ -144,6 +208,32 @@ function App() {
     setInput('');
   };
 
+  if (isAuthLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen bg-gray-100 items-center justify-center p-4">
+        {isLoginView ? (
+          <LoginForm
+            onSubmit={handleLogin}
+            onSwitchToSignup={() => setIsLoginView(false)}
+          />
+        ) : (
+          <SignupForm
+            onSubmit={handleSignup}
+            onSwitchToLogin={() => setIsLoginView(true)}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100">
@@ -170,48 +260,66 @@ function App() {
       <div className="w-64 bg-gray-800 p-4 flex flex-col">
         <button
           onClick={createNewChat}
-          className="flex items-center gap-2 w-full px-4 py-2 text-white bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors"
+          className="flex items-center gap-2 text-white bg-purple-500 p-2 rounded-lg hover:bg-purple-600 mb-4"
         >
           <MessageSquarePlus className="h-5 w-5" />
           New Chat
         </button>
-        <div className="mt-4 flex-1 overflow-y-auto">
+
+        {/* Chat List */}
+        <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => (
-            <div key={chat.id} className="relative group">
-              <button
-                onClick={() => setCurrentChatId(chat.id)}
-                className={`w-full px-4 py-2 text-left text-sm rounded-lg mb-1 flex items-center justify-between ${
-                  chat.id === currentChatId
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                <span className="truncate flex-1">{chat.title}</span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setChatToRename(chat);
-                      setNewChatTitle(chat.title);
-                      setIsRenameModalOpen(true);
-                    }}
-                    className="p-1 hover:bg-gray-600 rounded"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteChat(chat.id);
-                    }}
-                    className="p-1 hover:bg-gray-600 rounded"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </button>
-            </div>
+            <button
+              key={chat.id}
+              onClick={() => setCurrentChatId(chat.id)}
+              className={`w-full text-left p-2 rounded-lg mb-1 group flex justify-between items-center ${
+                chat.id === currentChatId
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              <span className="truncate">{chat.title}</span>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setChatToRename(chat);
+                    setNewChatTitle(chat.title);
+                    setIsRenameModalOpen(true);
+                  }}
+                  className="p-1 hover:bg-gray-600 rounded"
+                >
+                  <Edit2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteChat(chat.id);
+                  }}
+                  className="p-1 hover:bg-gray-600 rounded"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </button>
           ))}
+        </div>
+
+        {/* User Profile Section */}
+        <div className="mt-auto pt-4 border-t border-gray-700">
+          <div className="flex items-center justify-between text-gray-300 p-2">
+            <div className="truncate">
+              <div className="font-medium">{user.name}</div>
+              <div className="text-sm text-gray-400">{user.email}</div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-1 hover:bg-gray-700 rounded"
+              title="Logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
