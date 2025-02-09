@@ -11,12 +11,13 @@ import {
 import { initializeGemini } from './lib/gemini';
 import { Chat, Message } from './types';
 import { ChatMessage } from './components/ChatMessage';
-import { loadChats, saveChat, deleteChat, createUser, authenticateUser } from './lib/storage';
+import { loadChats, saveChat, deleteChat, createUser, authenticateUser, updateUser, verifyPassword, deleteUserAndChats } from './lib/storage';
 import { Modal } from './components/Modal';
 import { LoginForm } from './components/auth/LoginForm';
 import { SignupForm } from './components/auth/SignupForm';
 import { useAuth } from './contexts/AuthContext';
 import { LoginCredentials, SignupData } from './types/auth';
+import { ProfilePage } from './components/ProfilePage';
 
 function App() {
   // Auth states
@@ -34,6 +35,7 @@ function App() {
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [newChatTitle, setNewChatTitle] = useState('');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const currentChat = chats.find((chat) => chat.id === currentChatId);
 
@@ -208,6 +210,38 @@ function App() {
     setInput('');
   };
 
+  const handleProfileUpdate = async (updates: Partial<User>) => {
+    if (!user) return;
+    const updatedUser = await updateUser(user.id, updates);
+    setUser(updatedUser);
+  };
+
+  const handlePasswordChange = async (oldPassword: string, newPassword: string) => {
+    if (!user) return;
+    
+    try {
+      const isValid = await verifyPassword(user.id, oldPassword);
+      if (!isValid) {
+        throw new Error('Current password is incorrect');
+      }
+      await updateUser(user.id, { password: newPassword });
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Failed to change password');
+    }
+  };
+
+  const handleAccountDelete = async () => {
+    if (!user || !confirm('Are you sure you want to delete your account?')) return;
+    try {
+      await deleteUserAndChats(user.id);
+      setUser(null);
+      setChats([]);
+      setCurrentChatId(null);
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Failed to delete account');
+    }
+  };
+
   if (isAuthLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -308,10 +342,12 @@ function App() {
         {/* User Profile Section */}
         <div className="mt-auto pt-4 border-t border-gray-700">
           <div className="flex items-center justify-between text-gray-300 p-2">
-            <div className="truncate">
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="truncate hover:bg-gray-700 px-2 py-1 rounded"
+            >
               <div className="font-medium">{user.name}</div>
-              <div className="text-sm text-gray-400">{user.email}</div>
-            </div>
+            </button>
             <button
               onClick={handleLogout}
               className="p-1 hover:bg-gray-700 rounded"
@@ -323,59 +359,69 @@ function App() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex-1 overflow-y-auto">
-          {currentChat ? (
-            <>
-              <div className="max-w-3xl mx-auto w-full">
-                {currentChat.messages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
-                ))}
-                {isLoading && (
-                  <div className="p-6 text-gray-500">Generating response...</div>
-                )}
-                <div ref={messagesEndRef} />
+      {/* Main Area */}
+      {isProfileOpen ? (
+        <ProfilePage 
+          user={user} 
+          onBack={() => setIsProfileOpen(false)}
+          onUpdate={handleProfileUpdate}
+          onChangePassword={handlePasswordChange}
+          onDelete={handleAccountDelete}
+        />
+      ) : (
+        <div className="flex-1 flex flex-col">
+          <div className="flex-1 overflow-y-auto">
+            {currentChat ? (
+              <>
+                <div className="max-w-3xl mx-auto w-full">
+                  {currentChat.messages.map((message) => (
+                    <ChatMessage key={message.id} message={message} />
+                  ))}
+                  {isLoading && (
+                    <div className="p-6 text-gray-500">Generating response...</div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                Select a chat or create a new one to get started
               </div>
-            </>
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-500">
-              Select a chat or create a new one to get started
+            )}
+          </div>
+
+          {/* Input Area */}
+          {currentChat && (
+            <div className="border-t bg-white p-4">
+              <div className="max-w-3xl mx-auto">
+                <div className="flex gap-4">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage(input);
+                      }
+                    }}
+                    placeholder="Type your message..."
+                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={isLoading}
+                  />
+                  <button
+                    onClick={() => sendMessage(input)}
+                    disabled={isLoading || !input.trim()}
+                    className="p-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
-
-        {/* Input Area */}
-        {currentChat && (
-          <div className="border-t bg-white p-4">
-            <div className="max-w-3xl mx-auto">
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage(input);
-                    }
-                  }}
-                  placeholder="Type your message..."
-                  className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  disabled={isLoading}
-                />
-                <button
-                  onClick={() => sendMessage(input)}
-                  disabled={isLoading || !input.trim()}
-                  className="p-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       <Modal
         isOpen={isNewChatModalOpen}

@@ -95,13 +95,35 @@ export async function authenticateUser(credentials: LoginCredentials): Promise<U
   });
 }
 
+export async function verifyPassword(userId: string, password: string): Promise<boolean> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(USERS_STORE, 'readonly');
+    const store = transaction.objectStore(USERS_STORE);
+    const request = store.get(userId);
+    
+    request.onsuccess = () => {
+      const user = request.result;
+      if (!user) {
+        reject(new Error('User not found'));
+        return;
+      }
+      
+      // In a real app, you would hash and compare passwords securely
+      resolve(user.password === password);
+    };
+    
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => db.close();
+  });
+}
+
 export async function updateUser(userId: string, updates: Partial<User>): Promise<User> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(USERS_STORE, 'readwrite');
     const store = transaction.objectStore(USERS_STORE);
     
-    // First get the existing user
     const getRequest = store.get(userId);
     
     getRequest.onsuccess = () => {
@@ -172,5 +194,39 @@ export async function deleteChat(chatId: string): Promise<void> {
     request.onsuccess = () => resolve();
 
     transaction.oncomplete = () => db.close();
+  });
+}
+
+export async function deleteUserAndChats(userId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([USERS_STORE, CHATS_STORE], 'readwrite');
+    const userStore = transaction.objectStore(USERS_STORE);
+    const chatStore = transaction.objectStore(CHATS_STORE);
+
+    // First get all chats to find user's chats
+    const getAllChatsRequest = chatStore.getAll();
+    
+    getAllChatsRequest.onsuccess = () => {
+      const chats = getAllChatsRequest.result as Chat[];
+      
+      // Delete each chat that belongs to the user
+      chats.forEach(chat => {
+        if (chat.userId === userId) {
+          chatStore.delete(chat.id);
+        }
+      });
+      
+      // Delete the user
+      userStore.delete(userId);
+    };
+
+    getAllChatsRequest.onerror = () => reject(getAllChatsRequest.error);
+    
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => reject(transaction.error);
   });
 }
