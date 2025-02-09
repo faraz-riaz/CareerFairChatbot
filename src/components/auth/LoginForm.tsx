@@ -30,28 +30,30 @@ export function LoginForm({ onSubmit, onSwitchToSignup }: LoginFormProps) {
   };
 
   return (
-    <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-center mb-6">Login</h2>
+    <div className="max-w-md w-full p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+      <h2 className="text-2xl font-bold text-center mb-6 dark:text-white">Login</h2>
       {error && (
-        <div className="mb-4 p-2 bg-red-100 text-red-600 rounded-lg text-sm">
+        <div className="mb-4 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
           {error}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Email</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Email
+          </label>
           <input
             type="email"
             value={credentials.email}
             onChange={(e) =>
               setCredentials((prev) => ({ ...prev, email: e.target.value }))
             }
-            className="mt-1 w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+            className="mt-1 w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Password
           </label>
           <input
@@ -60,7 +62,7 @@ export function LoginForm({ onSubmit, onSwitchToSignup }: LoginFormProps) {
             onChange={(e) =>
               setCredentials((prev) => ({ ...prev, password: e.target.value }))
             }
-            className="mt-1 w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+            className="mt-1 w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             required
           />
         </div>
@@ -79,11 +81,11 @@ export function LoginForm({ onSubmit, onSwitchToSignup }: LoginFormProps) {
           )}
         </button>
       </form>
-      <p className="mt-4 text-center text-sm text-gray-600">
+      <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
         Don't have an account?{' '}
         <button
           onClick={onSwitchToSignup}
-          className="text-purple-500 hover:text-purple-600"
+          className="text-purple-500 dark:text-purple-400 hover:text-purple-600 dark:hover:text-purple-300"
         >
           Sign up
         </button>

@@ -18,6 +18,8 @@ import { SignupForm } from './components/auth/SignupForm';
 import { useAuth } from './contexts/AuthContext';
 import { LoginCredentials, SignupData } from './types/auth';
 import { ProfilePage } from './components/ProfilePage';
+import { ThemeToggle } from './components/ThemeToggle';
+import { AuthHeader } from './components/AuthHeader';
 
 function App() {
   // Auth states
@@ -252,18 +254,21 @@ function App() {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen bg-gray-100 items-center justify-center p-4">
-        {isLoginView ? (
-          <LoginForm
-            onSubmit={handleLogin}
-            onSwitchToSignup={() => setIsLoginView(false)}
-          />
-        ) : (
-          <SignupForm
-            onSubmit={handleSignup}
-            onSwitchToLogin={() => setIsLoginView(true)}
-          />
-        )}
+      <div className="flex min-h-screen bg-gray-100 dark:bg-gray-900">
+        <AuthHeader />
+        <div className="flex-1 flex items-center justify-center p-4">
+          {isLoginView ? (
+            <LoginForm
+              onSubmit={handleLogin}
+              onSwitchToSignup={() => setIsLoginView(false)}
+            />
+          ) : (
+            <SignupForm
+              onSubmit={handleSignup}
+              onSwitchToLogin={() => setIsLoginView(true)}
+            />
+          )}
+        </div>
       </div>
     );
   }
@@ -289,9 +294,9 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-800 p-4 flex flex-col">
+      <div className="w-64 bg-gray-800 dark:bg-gray-950 p-4 flex flex-col">
         <button
           onClick={createNewChat}
           className="flex items-center gap-2 text-white bg-purple-500 p-2 rounded-lg hover:bg-purple-600 mb-4"
@@ -344,32 +349,35 @@ function App() {
           <div className="flex items-center justify-between text-gray-300 p-2">
             <button
               onClick={() => setIsProfileOpen(true)}
-              className="truncate hover:bg-gray-700 px-2 py-1 rounded"
+              className="flex-1 text-left truncate hover:bg-gray-700 px-2 py-1 rounded transition-colors"
             >
               <div className="font-medium">{user.name}</div>
             </button>
-            <button
-              onClick={handleLogout}
-              className="p-1 hover:bg-gray-700 rounded"
-              title="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <button
+                onClick={handleLogout}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Area */}
       {isProfileOpen ? (
-        <ProfilePage 
-          user={user} 
+        <ProfilePage
+          user={user}
           onBack={() => setIsProfileOpen(false)}
           onUpdate={handleProfileUpdate}
           onChangePassword={handlePasswordChange}
           onDelete={handleAccountDelete}
         />
       ) : (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col bg-white dark:bg-gray-800">
           <div className="flex-1 overflow-y-auto">
             {currentChat ? (
               <>
@@ -392,7 +400,7 @@ function App() {
 
           {/* Input Area */}
           {currentChat && (
-            <div className="border-t bg-white p-4">
+            <div className="border-t bg-white dark:bg-gray-800 dark:border-gray-700 p-4">
               <div className="max-w-3xl mx-auto">
                 <div className="flex gap-4">
                   <input
@@ -406,7 +414,7 @@ function App() {
                       }
                     }}
                     placeholder="Type your message..."
-                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     disabled={isLoading}
                   />
                   <button
@@ -434,19 +442,19 @@ function App() {
             value={newChatTitle}
             onChange={(e) => setNewChatTitle(e.target.value)}
             placeholder="Enter chat name"
-            className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
             autoFocus
           />
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setIsNewChatModalOpen(false)}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleCreateChat}
-              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
             >
               Create
             </button>
@@ -468,7 +476,7 @@ function App() {
             value={newChatTitle}
             onChange={(e) => setNewChatTitle(e.target.value)}
             placeholder="Enter new name"
-            className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
             autoFocus
           />
           <div className="flex justify-end gap-2">
@@ -477,13 +485,13 @@ function App() {
                 setIsRenameModalOpen(false);
                 setChatToRename(null);
               }}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleRenameChat}
-              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+              className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
             >
               Rename
             </button>
