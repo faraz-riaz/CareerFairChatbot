@@ -38,6 +38,8 @@ function App() {
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [newChatTitle, setNewChatTitle] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [newestMessageTimestamp, setNewestMessageTimestamp] = useState<number>(0);
+  const [shownMessages, setShownMessages] = useState<Map<string, Set<number>>>(new Map());
 
   const currentChat = chats.find((chat) => chat._id === currentChatId);
 
@@ -143,6 +145,23 @@ function App() {
     }
   };
 
+  // Helper function to check if a message has been shown in a specific chat
+  const hasMessageBeenShown = (chatId: string, timestamp: number) => {
+    const chatShownMessages = shownMessages.get(chatId);
+    return chatShownMessages?.has(timestamp) ?? false;
+  };
+
+  // Helper function to mark a message as shown in a specific chat
+  const markMessageAsShown = (chatId: string, timestamp: number) => {
+    setShownMessages(prev => {
+      const newMap = new Map(prev);
+      const chatMessages = new Set(newMap.get(chatId) || []);
+      chatMessages.add(timestamp);
+      newMap.set(chatId, chatMessages);
+      return newMap;
+    });
+  };
+
   const sendMessage = async (content: string) => {
     if (!content.trim() || !currentChatId) return;
     setError(null);
@@ -182,6 +201,8 @@ function App() {
         timestamp: Date.now(),
       };
 
+      setNewestMessageTimestamp(botMessage.timestamp);
+
       const finalChat = await chatsApi.update(currentChatId, {
         messages: [...updatedChat.messages, botMessage],
       });
@@ -191,6 +212,10 @@ function App() {
           chat._id === currentChatId ? finalChat : chat
         )
       );
+
+      // Mark the message as shown for this specific chat
+      markMessageAsShown(currentChatId, botMessage.timestamp);
+
     } catch (error) {
       console.error('Error:', error);
       // Check for model overload error
@@ -378,7 +403,15 @@ function App() {
               <>
                 <div className="max-w-3xl mx-auto w-full">
                   {currentChat.messages.map((message) => (
-                    <ChatMessage key={message.timestamp} message={message} />
+                    <ChatMessage 
+                      key={message.timestamp} 
+                      message={message} 
+                      isNew={
+                        message.timestamp === newestMessageTimestamp && 
+                        !hasMessageBeenShown(currentChat._id, message.timestamp) &&
+                        message.role === 'bot'
+                      }
+                    />
                   ))}
                   {isLoading && (
                     <div className="p-6 text-gray-500">Generating response...</div>
