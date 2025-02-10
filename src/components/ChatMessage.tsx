@@ -71,11 +71,55 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
             className={`rounded-2xl px-4 py-2 ${
               isUser
                 ? 'bg-purple-500 text-white dark:bg-purple-600'
-                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                : 'bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-200 shadow-sm'
             }`}
           >
             {isUser || !isNew ? (
-              <MarkdownContent />
+              <div className={`prose max-w-none ${
+                isUser 
+                  ? 'dark:prose-invert prose-p:text-white prose-headings:text-white'
+                  : 'prose-gray dark:prose-invert'
+              }`}>
+                <ReactMarkdown
+                  components={{
+                    pre: ({ node, ...props }) => (
+                      <pre
+                        className={`mt-2 p-2 rounded ${
+                          isUser
+                            ? 'bg-purple-600/50 dark:bg-gray-900 text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200'
+                        } overflow-x-auto`}
+                        {...props}
+                      />
+                    ),
+                    code: ({ node, inline, ...props }) =>
+                      inline ? (
+                        <code
+                          className={`px-1 py-0.5 rounded ${
+                            isUser
+                              ? 'bg-purple-600/50 dark:bg-gray-800 text-white'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200'
+                          }`}
+                          {...props}
+                        />
+                      ) : (
+                        <code {...props} />
+                      ),
+                    a: ({ node, ...props }) => (
+                      <a
+                        className={`underline ${
+                          isUser
+                            ? 'text-white hover:text-purple-100'
+                            : 'text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300'
+                        }`}
+                        {...props}
+                      />
+                    ),
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
             ) : (
               <TypewriterText content={message.content} />
             )}
