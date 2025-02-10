@@ -11,7 +11,6 @@ import {
 import { initializeGemini } from './lib/gemini';
 import { Chat, Message } from './types';
 import { ChatMessage } from './components/ChatMessage';
-import { loadChats, saveChat, deleteChat, createUser, authenticateUser, updateUser, verifyPassword, deleteUserAndChats } from './lib/storage';
 import { Modal } from './components/Modal';
 import { LoginForm } from './components/auth/LoginForm';
 import { SignupForm } from './components/auth/SignupForm';
@@ -20,6 +19,7 @@ import { LoginCredentials, SignupData } from './types/auth';
 import { ProfilePage } from './components/ProfilePage';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AuthHeader } from './components/AuthHeader';
+import { auth, chats as chatsApi } from './lib/api';
 
 function App() {
   // Auth states
@@ -39,15 +39,14 @@ function App() {
   const [newChatTitle, setNewChatTitle] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  const currentChat = chats.find((chat) => chat.id === currentChatId);
+  const currentChat = chats.find((chat) => chat._id === currentChatId);
 
   // Load user's chats
   useEffect(() => {
     if (user) {
-      loadChats()
+      chatsApi.getAll()
         .then((loadedChats) => {
-          // Only show chats belonging to the current user
-          setChats(loadedChats.filter((chat) => chat.userId === user.id));
+          setChats(loadedChats);
         })
         .catch(console.error);
     } else {
@@ -62,8 +61,8 @@ function App() {
 
   const handleLogin = async (credentials: LoginCredentials) => {
     try {
-      const authenticatedUser = await authenticateUser(credentials);
-      setUser(authenticatedUser);
+      const user = await auth.login(credentials);
+      setUser(user);
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to login');
     }
@@ -71,17 +70,8 @@ function App() {
 
   const handleSignup = async (data: SignupData) => {
     try {
-      const newUser = await createUser({
-        name: data.name,
-        email: data.email,
-        password: data.password, // In a real app, this would be hashed
-        age: data.age,
-        jobTitle: data.jobTitle,
-      });
-      
-      // Remove password from user object before setting in state
-      const { password, ...userWithoutPassword } = newUser;
-      setUser(userWithoutPassword);
+      const user = await auth.signup(data);
+      setUser(user);
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to sign up');
     }
@@ -98,54 +88,58 @@ function App() {
     setIsNewChatModalOpen(true);
   };
 
-  const handleCreateChat = () => {
+  const handleCreateChat = async () => {
     if (!user) return;
     
     const title = newChatTitle.trim() || 'New Chat';
-    const newChat: Chat = {
-      id: crypto.randomUUID(),
+    const newChat = {
       title,
       messages: [],
       timestamp: Date.now(),
-      userId: user.id,
+      userId: user._id,
     };
-    setChats((prev) => [newChat, ...prev]);
-    saveChat(newChat).catch(console.error);
-    setCurrentChatId(newChat.id);
-    setIsNewChatModalOpen(false);
-    setNewChatTitle('');
+
+    try {
+      const savedChat = await chatsApi.create(newChat);
+      setChats((prev) => [savedChat, ...prev]);
+      setCurrentChatId(savedChat._id);
+      setIsNewChatModalOpen(false);
+      setNewChatTitle('');
+    } catch (error) {
+      console.error('Failed to create chat:', error);
+    }
   };
 
-  const handleRenameChat = () => {
+  const handleRenameChat = async () => {
     if (!chatToRename) return;
     
-    const updatedChat = {
-      ...chatToRename,
-      title: newChatTitle.trim() || chatToRename.title,
-    };
-    
-    setChats((prev) =>
-      prev.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
-    );
-    saveChat(updatedChat).catch(console.error);
-    setIsRenameModalOpen(false);
-    setChatToRename(null);
-    setNewChatTitle('');
+    try {
+      const updatedChat = await chatsApi.update(chatToRename._id, {
+        title: newChatTitle.trim() || chatToRename.title,
+      });
+      
+      setChats((prev) =>
+        prev.map((chat) => (chat._id === updatedChat._id ? updatedChat : chat))
+      );
+      setIsRenameModalOpen(false);
+      setChatToRename(null);
+      setNewChatTitle('');
+    } catch (error) {
+      console.error('Failed to rename chat:', error);
+    }
   };
 
   const handleDeleteChat = async (chatId: string) => {
     if (!confirm('Are you sure you want to delete this chat?')) return;
     
-    setChats((prev) => prev.filter((chat) => chat.id !== chatId));
-    if (currentChatId === chatId) {
-      setCurrentChatId(null);
-    }
-    
     try {
-      await deleteChat(chatId);
+      await chatsApi.delete(chatId);
+      setChats((prev) => prev.filter((chat) => chat._id !== chatId));
+      if (currentChatId === chatId) {
+        setCurrentChatId(null);
+      }
     } catch (error) {
       console.error('Failed to delete chat:', error);
-      // Optionally show an error message to the user
     }
   };
 
@@ -153,27 +147,24 @@ function App() {
     if (!content.trim() || !currentChatId) return;
     setError(null);
 
-    const newMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
+    const newMessage = {
+      role: 'user' as const,
       content,
       timestamp: Date.now(),
     };
 
-    const updatedChat = {
-      ...currentChat!,
-      messages: [...currentChat!.messages, newMessage],
-    };
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === currentChatId ? updatedChat : chat
-      )
-    );
-    await saveChat(updatedChat);
-
-    setIsLoading(true);
     try {
+      const updatedChat = await chatsApi.update(currentChatId, {
+        messages: [...currentChat!.messages, newMessage],
+      });
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat._id === currentChatId ? updatedChat : chat
+        )
+      );
+
+      setIsLoading(true);
       const model = await initializeGemini();
       const chat = model.startChat({
         history: updatedChat.messages.map((msg) => ({
@@ -185,48 +176,52 @@ function App() {
       const result = await chat.sendMessage(content);
       const response = result.response;
       
-      const botMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'bot',
+      const botMessage = {
+        role: 'bot' as const,
         content: response.text(),
         timestamp: Date.now(),
       };
 
-      const finalChat = {
-        ...updatedChat,
+      const finalChat = await chatsApi.update(currentChatId, {
         messages: [...updatedChat.messages, botMessage],
-      };
+      });
 
       setChats((prev) =>
         prev.map((chat) =>
-          chat.id === currentChatId ? finalChat : chat
+          chat._id === currentChatId ? finalChat : chat
         )
       );
-      await saveChat(finalChat);
     } catch (error) {
       console.error('Error:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred while processing your message');
+      // Check for model overload error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('model is overloaded')) {
+        setError('The AI model is currently overloaded. Please wait a moment and try again.');
+      } else {
+        setError('An error occurred while processing your message. Please try again.');
+      }
     } finally {
       setIsLoading(false);
+      setInput('');
     }
-    setInput('');
   };
 
   const handleProfileUpdate = async (updates: Partial<User>) => {
     if (!user) return;
-    const updatedUser = await updateUser(user.id, updates);
-    setUser(updatedUser);
+    try {
+      const updatedUser = await auth.updateUser(user._id, updates);
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      throw error;
+    }
   };
 
   const handlePasswordChange = async (oldPassword: string, newPassword: string) => {
     if (!user) return;
     
     try {
-      const isValid = await verifyPassword(user.id, oldPassword);
-      if (!isValid) {
-        throw new Error('Current password is incorrect');
-      }
-      await updateUser(user.id, { password: newPassword });
+      await auth.changePassword(user._id, oldPassword, newPassword);
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to change password');
     }
@@ -235,7 +230,7 @@ function App() {
   const handleAccountDelete = async () => {
     if (!user || !confirm('Are you sure you want to delete your account?')) return;
     try {
-      await deleteUserAndChats(user.id);
+      await auth.deleteUser(user._id);
       setUser(null);
       setChats([]);
       setCurrentChatId(null);
@@ -309,10 +304,10 @@ function App() {
         <div className="flex-1 overflow-y-auto">
           {chats.map((chat) => (
             <button
-              key={chat.id}
-              onClick={() => setCurrentChatId(chat.id)}
+              key={chat._id}
+              onClick={() => setCurrentChatId(chat._id)}
               className={`w-full text-left p-2 rounded-lg mb-1 group flex justify-between items-center ${
-                chat.id === currentChatId
+                chat._id === currentChatId
                   ? 'bg-gray-700 text-white'
                   : 'text-gray-300 hover:bg-gray-700'
               }`}
@@ -333,7 +328,7 @@ function App() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDeleteChat(chat.id);
+                    handleDeleteChat(chat._id);
                   }}
                   className="p-1 hover:bg-gray-600 rounded"
                 >
@@ -383,17 +378,49 @@ function App() {
               <>
                 <div className="max-w-3xl mx-auto w-full">
                   {currentChat.messages.map((message) => (
-                    <ChatMessage key={message.id} message={message} />
+                    <ChatMessage key={message.timestamp} message={message} />
                   ))}
                   {isLoading && (
                     <div className="p-6 text-gray-500">Generating response...</div>
+                  )}
+                  {error && (
+                    <div className="max-w-3xl mx-auto p-4 mb-4">
+                      <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-4 rounded-lg flex items-start gap-3">
+                        <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">Error</p>
+                          <p className="text-sm mt-1">{error}</p>
+                          <button
+                            onClick={() => setError(null)}
+                            className="mt-2 text-sm bg-red-100 dark:bg-red-900/50 px-3 py-1 rounded-md hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                   <div ref={messagesEndRef} />
                 </div>
               </>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-500">
-                Select a chat or create a new one to get started
+              <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                <div className="w-24 h-24 bg-purple-500 rounded-full flex items-center justify-center mb-6">
+                  <MessageSquarePlus className="h-12 w-12 text-white" />
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                  Welcome to Career Fair Chat
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md">
+                  Start a conversation with our AI assistant to get help with your career questions.
+                </p>
+                <button
+                  onClick={createNewChat}
+                  className="flex items-center gap-2 px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                >
+                  <MessageSquarePlus className="h-5 w-5" />
+                  Start a New Chat
+                </button>
               </div>
             )}
           </div>
