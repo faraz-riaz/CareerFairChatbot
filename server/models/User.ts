@@ -7,6 +7,10 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   age: { type: Number, required: true },
   jobTitle: { type: String, required: true },
+  resume: {
+    type: String,
+    required: false
+  }
 }, { timestamps: true });
 
 userSchema.pre('save', async function(next) {

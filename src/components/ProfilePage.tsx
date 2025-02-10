@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User } from '../types/auth';
-import { ArrowLeft, Edit2, Key, Trash2, Save, X } from 'lucide-react';
+import { ArrowLeft, Edit2, Key, Trash2, Save, X, Upload, CheckCircle, FileText } from 'lucide-react';
 import { Modal } from './Modal';
+import { pdfToText } from '../lib/pdfToText';
 
 interface ProfilePageProps {
   user: User;
@@ -33,6 +34,9 @@ export function ProfilePage({
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingResume, setIsUploadingResume] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
     try {
@@ -64,6 +68,37 @@ export function ProfilePage({
       return;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (file.type !== 'application/pdf') {
+      setResumeError('Please upload a PDF file');
+      return;
+    }
+
+    try {
+      setIsUploadingResume(true);
+      setResumeError(null);
+
+      // Convert PDF to text
+      const resumeText = await pdfToText(file);
+      
+      // Update user profile with resume text
+      await onUpdate({ resume: resumeText });
+      
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      setResumeError('Failed to process resume. Please try again.');
+    } finally {
+      setIsUploadingResume(false);
     }
   };
 
@@ -198,6 +233,76 @@ export function ProfilePage({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Resume Section */}
+          <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Resume</h3>
+            
+            <div className="space-y-4">
+              {user.resume ? (
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-900">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <CheckCircle className="h-6 w-6 text-green-500 dark:text-green-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-gray-400" />
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                          Resume uploaded successfully
+                        </p>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                        Your resume has been processed and is ready for AI analysis
+                      </p>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="mt-3 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 flex items-center gap-1"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Upload a different version
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                  <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                    Upload your resume (PDF only)
+                  </p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400"
+                  >
+                    Select file
+                  </button>
+                </div>
+              )}
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={handleResumeUpload}
+              />
+              
+              {isUploadingResume && (
+                <div className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-500 border-t-transparent"></div>
+                  Processing resume...
+                </div>
+              )}
+              
+              {resumeError && (
+                <div className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+                  <X className="h-4 w-4" />
+                  {resumeError}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Actions */}

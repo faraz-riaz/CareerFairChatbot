@@ -71,7 +71,7 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
             className={`rounded-2xl px-4 py-2 ${
               isUser
                 ? 'bg-purple-500 text-white dark:bg-purple-600'
-                : 'bg-white text-gray-900 dark:bg-gray-700 dark:text-gray-200 shadow-sm'
+                : 'bg-gray-50 border border-gray-200 text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 shadow-sm'
             }`}
           >
             {isUser || !isNew ? (

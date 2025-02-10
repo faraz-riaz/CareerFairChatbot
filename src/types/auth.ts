@@ -4,6 +4,7 @@ export interface User {
   email: string;
   age: number;
   jobTitle: string;
+  resume?: string;
   password?: string;
 }
 
