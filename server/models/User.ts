@@ -10,6 +10,10 @@ const userSchema = new mongoose.Schema({
   resume: {
     type: String,
     required: false
+  },
+  rawResume: {
+    type: String,
+    required: false
   }
 }, { timestamps: true });
 

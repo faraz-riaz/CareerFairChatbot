@@ -5,6 +5,7 @@ export interface User {
   age: number;
   jobTitle: string;
   resume?: string;
+  rawResume?: string;
   password?: string;
 }
 
