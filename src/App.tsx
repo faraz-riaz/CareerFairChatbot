@@ -330,7 +330,10 @@ function App() {
           {chats.map((chat) => (
             <button
               key={chat._id}
-              onClick={() => setCurrentChatId(chat._id)}
+              onClick={() => {
+                setCurrentChatId(chat._id);
+                setIsProfileOpen(false);
+              }}
               className={`w-full text-left p-2 rounded-lg mb-1 group flex justify-between items-center ${
                 chat._id === currentChatId
                   ? 'bg-gray-700 text-white'
