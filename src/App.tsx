@@ -15,11 +15,12 @@ import { Modal } from './components/Modal';
 import { LoginForm } from './components/auth/LoginForm';
 import { SignupForm } from './components/auth/SignupForm';
 import { useAuth } from './contexts/AuthContext';
-import { LoginCredentials, SignupData } from './types/auth';
+import { LoginCredentials, SignupData, User } from './types/auth';
 import { ProfilePage } from './components/ProfilePage';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AuthHeader } from './components/AuthHeader';
 import { auth, chats as chatsApi } from './lib/api';
+import { careerFairContext } from './lib/eventContext';
 
 function App() {
   // Auth states
@@ -40,6 +41,8 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [newestMessageTimestamp, setNewestMessageTimestamp] = useState<number>(0);
   const [shownMessages, setShownMessages] = useState<Map<string, Set<number>>>(new Map());
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
 
   const currentChat = chats.find((chat) => chat._id === currentChatId);
 
@@ -132,14 +135,14 @@ function App() {
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    if (!confirm('Are you sure you want to delete this chat?')) return;
-    
     try {
       await chatsApi.delete(chatId);
       setChats((prev) => prev.filter((chat) => chat._id !== chatId));
       if (currentChatId === chatId) {
         setCurrentChatId(null);
       }
+      setIsDeleteModalOpen(false);
+      setChatToDelete(null);
     } catch (error) {
       console.error('Failed to delete chat:', error);
     }
@@ -185,19 +188,17 @@ function App() {
 
       setIsLoading(true);
       const model = await initializeGemini();
-      const chat = model.startChat({
-        history: updatedChat.messages.map((msg) => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: msg.content,
-        })),
-      });
       
-      const result = await chat.sendMessage(content);
-      const response = result.response;
+      // Generate response using the model with career fair context
+      const result = await model.generateContent([
+        { text: careerFairContext.getSystemPrompt() },
+        ...updatedChat.messages.map((msg: Message) => ({ text: msg.content })),
+        { text: content }
+      ]);
       
       const botMessage = {
         role: 'bot' as const,
-        content: response.text(),
+        content: result.response.text(),
         timestamp: Date.now(),
       };
 
@@ -356,7 +357,8 @@ function App() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDeleteChat(chat._id);
+                    setChatToDelete(chat);
+                    setIsDeleteModalOpen(true);
                   }}
                   className="p-1 hover:bg-gray-600 rounded"
                 >
@@ -557,6 +559,38 @@ function App() {
               className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
             >
               Rename
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setChatToDelete(null);
+        }}
+        title="Delete Chat"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600 dark:text-gray-300">
+            Are you sure you want to delete this chat? This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setChatToDelete(null);
+              }}
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => chatToDelete && handleDeleteChat(chatToDelete._id)}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+            >
+              Delete
             </button>
           </div>
         </div>
