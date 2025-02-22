@@ -1,9 +1,11 @@
 import axios from 'axios';
+import type { LoginCredentials, SignupData, User } from './types/auth';
+import type { Chat } from './types';
 
-const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:3000/api';
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -20,15 +22,15 @@ api.interceptors.request.use((config) => {
 
 export const auth = {
   login: async (credentials: LoginCredentials) => {
-    const { data } = await api.post('/users/login', credentials);
-    localStorage.setItem('token', data.token);
-    return data.user;
+    const response = await api.post('/users/login', credentials);
+    localStorage.setItem('token', response.data.token);
+    return response.data.user;
   },
 
   signup: async (userData: SignupData) => {
-    const { data } = await api.post('/users/signup', userData);
-    localStorage.setItem('token', data.token);
-    return data.user;
+    const response = await api.post('/users/signup', userData);
+    localStorage.setItem('token', response.data.token);
+    return response.data.user;
   },
 
   updateUser: async (userId: string, updates: Partial<User>) => {
@@ -50,21 +52,29 @@ export const auth = {
 
 export const chats = {
   getAll: async () => {
-    const { data } = await api.get('/chats');
-    return data;
+    const response = await api.get('/chats');
+    return response.data;
   },
 
-  create: async (chat: Omit<Chat, 'id'>) => {
-    const { data } = await api.post('/chats', chat);
-    return data;
+  create: async (chat: Omit<Chat, '_id'>) => {
+    const response = await api.post('/chats', chat);
+    return response.data;
   },
 
   update: async (chatId: string, updates: Partial<Chat>) => {
-    const { data } = await api.patch(`/chats/${chatId}`, updates);
-    return data;
+    const response = await api.patch(`/chats/${chatId}`, updates);
+    return response.data;
   },
 
   delete: async (chatId: string) => {
     await api.delete(`/chats/${chatId}`);
+  },
+};
+
+export const companies = {
+  query: async (queryString: string) => {
+    console.log('Sending query to server:', { query: queryString });
+    const response = await api.post('/companies/query', { query: queryString });
+    return response.data;
   },
 }; 

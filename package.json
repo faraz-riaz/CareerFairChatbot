@@ -10,7 +10,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:db": "tsx server/test-db.ts"
+    "test:db": "tsx server/test-db.ts",
+    "test:api": "tsx server/test-api.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
@@ -19,7 +20,7 @@
     "clsx": "^2.1.0",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.7",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.344.0",

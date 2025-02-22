@@ -19,8 +19,10 @@ import { LoginCredentials, SignupData, User } from './types/auth';
 import { ProfilePage } from './components/ProfilePage';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AuthHeader } from './components/AuthHeader';
-import { auth, chats as chatsApi } from './lib/api';
+import { auth, chats as chatsApi, companies } from './lib/api';
 import { careerFairContext } from './lib/eventContext';
+import { classifyQuery } from './lib/queryClassifier';
+import { generateMongoQuery } from './lib/companyQueries';
 
 function App() {
   // Auth states
@@ -169,13 +171,40 @@ function App() {
     if (!content.trim() || !currentChatId) return;
     setError(null);
 
-    const newMessage = {
-      role: 'user' as const,
-      content,
-      timestamp: Date.now(),
-    };
-
     try {
+      // Classify the query first (not part of chat)
+      const queryType = await classifyQuery(content);
+      
+      let additionalContext = '';
+      
+      if (queryType === 'company_info') {
+        try {
+          // Generate MongoDB query
+          const mongoQueryString = await generateMongoQuery(content);
+          console.log('Generated Query:', mongoQueryString);
+          
+          // Use the API function instead of fetch
+          const companyInfo = await companies.query(mongoQueryString);
+
+          if (companyInfo.length === 0) {
+            additionalContext = '\nNo matching companies found.';
+          } else {
+            additionalContext = `\nRelevant company information:\n${JSON.stringify(companyInfo, null, 2)}`;
+          }
+        } catch (error) {
+          console.error('Company query error:', error);
+          setError('Failed to fetch company information');
+          return;
+        }
+      }
+
+      // Proceed with normal chat flow
+      const newMessage = {
+        role: 'user' as const,
+        content,
+        timestamp: Date.now(),
+      };
+
       const updatedChat = await chatsApi.update(currentChatId, {
         messages: [...currentChat!.messages, newMessage],
       });
@@ -191,7 +220,7 @@ function App() {
       
       // Generate response using the model with career fair context
       const result = await model.generateContent([
-        { text: careerFairContext.getSystemPrompt() },
+        { text: careerFairContext.getSystemPrompt() + additionalContext },
         ...updatedChat.messages.map((msg: Message) => ({ text: msg.content })),
         { text: content }
       ]);

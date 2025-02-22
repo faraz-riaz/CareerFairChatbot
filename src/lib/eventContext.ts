@@ -24,8 +24,43 @@ Are you ready to take the next step in your career? Qatar Career Connect 2025 is
     onSite: "Limited slots available"
   },
 
-  // Helper function to generate system prompt
-  getSystemPrompt: () => `You are an AI assistant for the Qatar Career Connect 2025 career fair. 
+  // Define as property, not as function declaration
+  databaseSchemaInfo: `Database Schema:
+
+1. Users Collection:
+- name (String): User's full name
+- email (String): Unique email address
+- age (Number): User's age
+- jobTitle (String): Current job title
+- resume (String): Processed and classified resume text
+- rawResume (String): Original resume text
+
+2. Companies Collection:
+- Industry (String): Company's industry sector
+- Company (String): Unique company name
+- booth_location (String): Location at the career fair
+- recruiting_for (String[]): Target experience levels
+- special_event (String): Special events or presentations
+- accepting_resumes (Boolean): Whether accepting resumes
+- interview_slots_available (Number): Available interview slots
+- refreshments_provided (Boolean): Refreshments availability
+
+3. Jobs Collection:
+- category (String): Job category/field
+- job_title (String): Position title
+- job_description (String): Detailed job description
+- Company (String): Associated company name
+
+4. Chats Collection:
+- title (String): Chat conversation title
+- messages (Array): Array of user-bot messages
+- userId (ObjectId): Reference to user
+- timestamp (Number): Creation timestamp`,
+
+  getSystemPrompt: () => `You are an AI assistant for the Qatar Career Connect 2025 career fair.
+
+${careerFairContext.databaseSchemaInfo}
+
 Event Details:
 - ${careerFairContext.eventName}
 - Date: ${careerFairContext.date}
@@ -48,6 +83,9 @@ Your role is to assist users with:
 3. Guidance on preparing for the event
 4. Navigation help during the event
 5. Career advice and industry insights
+6. Matching users with relevant companies and positions based on the database information
+
+Use the database schema information to provide accurate details about companies, jobs, and event logistics. When discussing companies, reference their booth locations and recruiting details.
 
 Provide accurate, helpful responses while maintaining a professional and encouraging tone.`
 }; 
