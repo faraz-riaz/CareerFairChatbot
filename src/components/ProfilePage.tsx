@@ -36,8 +36,9 @@ export function ProfilePage({
   });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploadingResume, setIsUploadingResume] = useState(false);
-  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
@@ -73,145 +74,62 @@ export function ProfilePage({
     }
   };
 
-  const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-
-    if (file.type !== 'application/pdf') {
-      setResumeError('Please upload a PDF file');
-      return;
-    }
-
+    
+    setIsUploading(true);
+    setUploadError(null);
+    
     try {
-      setIsUploadingResume(true);
-      setResumeError(null);
-
-      // Convert PDF to text
-      const rawResumeText = await pdfToText(file);
+      let text = '';
       
-      // Process resume with Gemini
-      const model = await initializeGemini();
-      const prompt = `Please analyze this resume and classify all information into the following categories. Use markdown formatting with ## for main categories and ### for subcategories where appropriate. Format as shown in the example below:
-
-## Experience
-### Software Engineer at XYZ Company (2022-2023)
-- Led development of feature X
-- Improved performance by Y%
-
-## Education
-### Bachelor of Science in Computer Science
-University of Technology, New York
-2020-2024
-GPA: 3.9/4.0
-
-### Summer Program
-Tokyo University of Technology, Tokyo
-July, 2023
-(No additional information other than the name of the university, location and year)
-
-### Coding Bootcamp
-Code Academy, New York
-June, 2022 
-(No additional information other than the name of the institute, location and year)
-
-## Projects
-### E-commerce Platform
-Full-stack web application for online retail
-- Implemented secure payment processing
-- Reduced page load time by 40%
-Technologies: \`React\`, \`Node.js\`, \`MongoDB\`, \`AWS\`
-
-## Skills
-Python, JavaScript, TypeScript, Java, React, Express, Django, TensorFlow, PostgreSQL, MongoDB, Redis
-
-## Certifications
-- AWS Certified Solutions Architect (2023)
-- Google Cloud Professional Developer (2022)
-
-Strictly follow the format guidelines.
-
-Only include information that fits into these five categories. Format guidelines:
-- Education: Only include degree name, university name and location, year, and GPA if available
-- Skills: List all skills on one line, separated by commas
-- Certifications and Awards: Simple bullet points with title and year only
-- Remove any URLs, links, or references to external websites
-Keep all text aligned to the left with no extra indentation except for bullet points. Here's the resume:
-
-${rawResumeText}`;
-
-      const result = await model.generateContent(prompt);
-      if (!result.response) {
-        throw new Error('Failed to get response from AI');
+      if (file.type === 'application/pdf') {
+        try {
+          text = await pdfToText(file);
+        } catch (pdfError) {
+          console.error('Resume processing error:', pdfError);
+          setUploadError(pdfError instanceof Error 
+            ? pdfError.message 
+            : 'Failed to process PDF file');
+          setIsUploading(false);
+          return;
+        }
+      } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        text = await file.text();
+      } else {
+        setUploadError('Unsupported file type. Please upload a PDF or TXT file.');
+        setIsUploading(false);
+        return;
       }
       
-      const classifiedResume = result.response.text();
-      if (!classifiedResume) {
-        throw new Error('Empty response from AI');
+      if (!text.trim()) {
+        setUploadError('No text could be extracted from the file. Please try a different file or paste the text directly.');
+        setIsUploading(false);
+        return;
       }
       
-      // Update user profile with both raw and classified resume text
-      await onUpdate({ 
-        resume: classifiedResume,
-        rawResume: rawResumeText 
-      });
-      
-      // Clear file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      try {
+        await onUpdate({ resume: text });
+        setUploadSuccess('Resume uploaded successfully!');
+        setTimeout(() => setUploadSuccess(null), 3000);
+      } catch (updateError) {
+        console.error('Failed to update profile with resume:', updateError);
+        if (updateError instanceof Error) {
+          if (updateError.message.includes('authenticate') || updateError.message.includes('log in')) {
+            setUploadError('Your session has expired. Please log in again.');
+            // Optionally redirect to login page
+          } else {
+            setUploadError('Failed to save resume to your profile. Please try again.');
+          }
+        }
       }
     } catch (error) {
-      console.error('Resume processing error:', error);
-      setResumeError(
-        error instanceof Error 
-          ? `Failed to process resume: ${error.message}` 
-          : 'Failed to process resume. Please try again.'
-      );
+      console.error('File upload error:', error);
+      setUploadError('Failed to process the file. Please try again or paste the text directly.');
     } finally {
-      setIsUploadingResume(false);
+      setIsUploading(false);
     }
-  };
-
-  const ClassifiedResume = ({ markdown }: { markdown: string }) => {
-    return (
-      <div className="mt-4 space-y-6">
-        <ReactMarkdown
-          components={{
-            h2: ({ children }) => (
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white border-b pb-2 mb-4 dark:border-gray-700">
-                {children}
-              </h2>
-            ),
-            h3: ({ children }) => (
-              <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200 mt-4">
-                {children}
-              </h3>
-            ),
-            ul: ({ children }) => (
-              <ul className="list-disc ml-4 space-y-1 text-gray-700 dark:text-gray-300 mb-4">
-                {children}
-              </ul>
-            ),
-            li: ({ children }) => (
-              <li className="text-gray-700 dark:text-gray-300">
-                {children}
-              </li>
-            ),
-            p: ({ children }) => (
-              <p className="text-gray-700 dark:text-gray-300 mb-2 whitespace-pre-line">
-                {children}
-              </p>
-            ),
-            code: ({ children }) => (
-              <code className="px-1.5 py-0.5 text-sm bg-gray-100 dark:bg-gray-800 rounded text-gray-800 dark:text-gray-200">
-                {children}
-              </code>
-            ),
-          }}
-        >
-          {markdown}
-        </ReactMarkdown>
-      </div>
-    );
   };
 
   return (
@@ -349,89 +267,88 @@ ${rawResumeText}`;
               )}
             </div>
 
-            {/* Resume Section */}
-            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Resume</h3>
-              
-              <div className="space-y-4">
-                {user.resume ? (
-                  <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-900">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0">
-                        <CheckCircle className="h-6 w-6 text-green-500 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-5 w-5 text-gray-400" />
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
-                            Resume uploaded successfully
-                          </p>
-                        </div>
-                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                          Your resume has been processed and classified
-                        </p>
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="mt-3 text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 flex items-center gap-1"
-                        >
-                          <Upload className="h-4 w-4" />
-                          Upload a different version
-                        </button>
-                      </div>
+            {/* Resume Upload Section - More Discrete Version */}
+            <div className="border-t dark:border-gray-700 mt-6">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-base font-medium text-gray-900 dark:text-white">
+                    Resume
+                  </h3>
+                  
+                  {user.resume && (
+                    <div className="flex items-center text-sm text-green-600 dark:text-green-400">
+                      <CheckCircle className="h-4 w-4 mr-1.5 flex-shrink-0" />
+                      <span>Resume uploaded</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                  <div className="flex items-center">
+                    <div className="mr-3 bg-purple-100 dark:bg-purple-900/20 rounded-full p-2">
+                      <FileText className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+                    </div>
+                    
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1.5">
+                        {user.resume 
+                          ? "Update your resume (PDF only)" 
+                          : "Upload your resume to improve job recommendations"}
+                      </p>
+                      
+                      <label 
+                        htmlFor="resume-upload" 
+                        className="inline-flex items-center text-xs px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded cursor-pointer transition-colors"
+                      >
+                        <Upload className="h-3 w-3 mr-1.5" />
+                        {user.resume ? "Replace PDF" : "Upload PDF"}
+                        <input
+                          id="resume-upload"
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                    <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-                      Upload your resume (PDF only)
-                    </p>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400"
-                    >
-                      Select file
-                    </button>
-                  </div>
-                )}
-                
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={handleResumeUpload}
-                />
-                
-                {isUploadingResume && (
-                  <div className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-500 border-t-transparent"></div>
-                    Processing resume...
-                  </div>
-                )}
-                
-                {resumeError && (
-                  <div className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                    <X className="h-4 w-4" />
-                    {resumeError}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Resume Details Section */}
-            {user.resume && (
-              <div className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-                    Resume Details
-                  </h3>
-                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
-                    <ClassifiedResume markdown={user.resume} />
-                  </div>
+                  {isUploading && (
+                    <div className="mt-2 text-xs text-blue-500 flex items-center">
+                      <svg className="animate-spin mr-1.5 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Processing...</span>
+                    </div>
+                  )}
+
+                  {uploadError && (
+                    <div className="mt-2 text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/10 rounded">
+                      <div className="flex items-start">
+                        <svg className="h-3 w-3 text-red-400 mr-1.5 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                        <span>{uploadError}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {uploadSuccess && (
+                    <div className="mt-2 text-xs text-green-500 p-2 bg-green-50 dark:bg-green-900/10 rounded">
+                      <div className="flex items-start">
+                        <svg className="h-3 w-3 text-green-400 mr-1.5 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>{uploadSuccess}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Actions */}
             <div className="border-t dark:border-gray-700 p-6 space-y-4">

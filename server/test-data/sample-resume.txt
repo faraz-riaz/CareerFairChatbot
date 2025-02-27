@@ -1,0 +1,21 @@
+
+JOHN DOE
+Software Engineer
+
+EXPERIENCE
+Senior Software Engineer - ABC Tech (2020-Present)
+- Developed backend services using Node.js and TypeScript
+- Implemented RESTful APIs with Express
+- Worked with MongoDB and PostgreSQL databases
+- Used React for frontend development
+
+Software Developer - XYZ Corp (2018-2020)
+- Built cloud applications using AWS
+- Wrote Python and JavaScript applications
+- Used Git for version control
+
+EDUCATION
+BS Computer Science - State University (2014-2018)
+
+SKILLS
+JavaScript, TypeScript, Node.js, React, MongoDB, PostgreSQL, AWS, Docker, Git

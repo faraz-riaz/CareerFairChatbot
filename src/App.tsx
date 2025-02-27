@@ -21,8 +21,9 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { AuthHeader } from './components/AuthHeader';
 import { auth, chats as chatsApi, companies } from './lib/api';
 import { careerFairContext } from './lib/eventContext';
-import { classifyQuery } from './lib/queryClassifier';
+import { classifyQuery, QueryType } from './lib/queryClassifier';
 import { generateMongoQuery } from './lib/companyQueries';
+import { getJobRecommendationsForChat } from './lib/jobRecommendations';
 
 function App() {
   // Auth states
@@ -170,94 +171,203 @@ function App() {
   const sendMessage = async (content: string) => {
     if (!content.trim() || !currentChatId) return;
     setError(null);
+    setIsLoading(true);
 
     try {
-      // Classify the query first (not part of chat)
-      const queryType = await classifyQuery(content);
-      
-      let additionalContext = '';
-      
-      if (queryType === 'company_info') {
-        try {
-          // Generate MongoDB query
-          const mongoQueryString = await generateMongoQuery(content);
-          console.log('Generated Query:', mongoQueryString);
-          
-          // Use the API function instead of fetch
-          const companyInfo = await companies.query(mongoQueryString);
-
-          if (companyInfo.length === 0) {
-            additionalContext = '\nNo matching companies found.';
-          } else {
-            additionalContext = `\nRelevant company information:\n${JSON.stringify(companyInfo, null, 2)}`;
-          }
-        } catch (error) {
-          console.error('Company query error:', error);
-          setError('Failed to fetch company information');
-          return;
-        }
-      }
-
-      // Proceed with normal chat flow
+      // Create and add user message
       const newMessage = {
         role: 'user' as const,
         content,
         timestamp: Date.now(),
       };
 
-      const updatedChat = await chatsApi.update(currentChatId, {
-        messages: [...currentChat!.messages, newMessage],
-      });
+      // Update chat with user message
+      let updatedChat;
+      try {
+        updatedChat = await chatsApi.update(currentChatId, {
+          messages: [...currentChat!.messages, newMessage],
+        });
 
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat._id === currentChatId ? updatedChat : chat
-        )
-      );
-
-      setIsLoading(true);
-      const model = await initializeGemini();
-      
-      // Generate response using the model with career fair context
-      const result = await model.generateContent([
-        { text: careerFairContext.getSystemPrompt() + additionalContext },
-        ...updatedChat.messages.map((msg: Message) => ({ text: msg.content })),
-        { text: content }
-      ]);
-      
-      const botMessage = {
-        role: 'bot' as const,
-        content: result.response.text(),
-        timestamp: Date.now(),
-      };
-
-      setNewestMessageTimestamp(botMessage.timestamp);
-
-      const finalChat = await chatsApi.update(currentChatId, {
-        messages: [...updatedChat.messages, botMessage],
-      });
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat._id === currentChatId ? finalChat : chat
-        )
-      );
-
-      // Mark the message as shown for this specific chat
-      markMessageAsShown(currentChatId, botMessage.timestamp);
-
-    } catch (error) {
-      console.error('Error:', error);
-      // Check for model overload error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('model is overloaded')) {
-        setError('The AI model is currently overloaded. Please wait a moment and try again.');
-      } else {
-        setError('An error occurred while processing your message. Please try again.');
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat._id === currentChatId ? updatedChat : chat
+          )
+        );
+      } catch (error) {
+        console.error('Failed to save user message:', error);
+        setError('Failed to save your message. Please try again.');
+        setIsLoading(false);
+        return;
       }
+
+      // Process the message based on query type
+      try {
+        // Classify the query first (not part of chat)
+        const queryType = await classifyQuery(content);
+        
+        let additionalContext = '';
+        
+        if (queryType === QueryType.COMPANY_INFO) {
+          try {
+            // Generate MongoDB query
+            const mongoQueryString = await generateMongoQuery(content);
+            console.log('Generated Query:', mongoQueryString);
+            
+            // Use the API function instead of fetch
+            const companyInfo = await companies.query(mongoQueryString);
+
+            if (companyInfo.length === 0) {
+              additionalContext = '\nNo matching companies found.';
+            } else {
+              additionalContext = `\nRelevant company information:\n${JSON.stringify(companyInfo, null, 2)}`;
+            }
+          } catch (error) {
+            console.error('Company query error:', error);
+            // Don't fail the entire message, just note the error
+            additionalContext = '\nError retrieving company information.';
+          }
+        } else if (queryType === QueryType.JOB_RECOMMENDATION) {
+          try {
+            // Get job recommendations
+            const jobRecommendations = await getJobRecommendationsForChat(content);
+            
+            // Create and add bot message with recommendations
+            const botMessage = {
+              role: 'bot' as const,
+              content: jobRecommendations,
+              timestamp: Date.now(),
+            };
+
+            setNewestMessageTimestamp(botMessage.timestamp);
+
+            const finalChat = await chatsApi.update(currentChatId, {
+              messages: [...updatedChat.messages, botMessage],
+            });
+
+            setChats((prev) =>
+              prev.map((chat) =>
+                chat._id === currentChatId ? finalChat : chat
+              )
+            );
+            
+            setInput('');
+            setIsLoading(false);
+            return; // Skip the normal flow
+          } catch (error) {
+            console.error('Job recommendation error:', error);
+            // Create a fallback response instead of failing
+            const errorBotMessage = {
+              role: 'bot' as const,
+              content: "I'm sorry, I encountered an error while retrieving job recommendations. Please make sure you've uploaded your resume in your profile, or try asking in a different way.",
+              timestamp: Date.now(),
+            };
+
+            setNewestMessageTimestamp(errorBotMessage.timestamp);
+
+            const errorChat = await chatsApi.update(currentChatId, {
+              messages: [...updatedChat.messages, errorBotMessage],
+            });
+
+            setChats((prev) =>
+              prev.map((chat) =>
+                chat._id === currentChatId ? errorChat : chat
+              )
+            );
+            
+            setInput('');
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Generate response using the model with career fair context
+        let botResponse;
+        try {
+          const model = await initializeGemini();
+          
+          const result = await model.generateContent([
+            { text: careerFairContext.getSystemPrompt() + additionalContext },
+            ...updatedChat.messages.map((msg: Message) => ({ text: msg.content })),
+            { text: content }
+          ]);
+          
+          botResponse = result.response.text();
+        } catch (aiError) {
+          console.error('AI model error:', aiError);
+          // Provide a fallback response
+          botResponse = "I'm sorry, I'm having trouble processing your request right now. Could you try asking in a different way?";
+        }
+
+        // Create bot message
+        const botMessage = {
+          role: 'bot' as const,
+          content: botResponse,
+          timestamp: Date.now(),
+        };
+
+        setNewestMessageTimestamp(botMessage.timestamp);
+
+        // Update chat with bot response
+        try {
+          const finalChat = await chatsApi.update(currentChatId, {
+            messages: [...updatedChat.messages, botMessage],
+          });
+
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat._id === currentChatId ? finalChat : chat
+            )
+          );
+        } catch (saveError) {
+          console.error('Failed to save bot response:', saveError);
+          // At least update the UI even if we couldn't save to the server
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat._id === currentChatId 
+                ? { ...chat, messages: [...chat.messages, botMessage] } 
+                : chat
+            )
+          );
+          setError('Failed to save the conversation. The response is shown but may not persist if you refresh.');
+        }
+      } catch (processingError) {
+        console.error('Message processing error:', processingError);
+        
+        // Create a fallback error message
+        const errorMessage = {
+          role: 'bot' as const,
+          content: "I'm sorry, I encountered an error while processing your message. Please try again or ask a different question.",
+          timestamp: Date.now(),
+        };
+        
+        // Add the error message to the chat
+        try {
+          const errorChat = await chatsApi.update(currentChatId, {
+            messages: [...updatedChat.messages, errorMessage],
+          });
+
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat._id === currentChatId ? errorChat : chat
+            )
+          );
+        } catch (saveError) {
+          // Last resort - update UI only
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat._id === currentChatId 
+                ? { ...chat, messages: [...chat.messages, errorMessage] } 
+                : chat
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error in chat flow:', error);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
-      setIsLoading(false);
       setInput('');
+      setIsLoading(false);
     }
   };
 
